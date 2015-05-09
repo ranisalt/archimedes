@@ -31,13 +31,15 @@ partitioning_uefi() {
 	parted -s --align optimal -- /dev/sda \
 		mkpart ESP fat32 0% 200MiB \
 		mkpart primary ext4 200MiB 10% \
-		mkpart primary ext4 10% 100% \
+		mkpart primary ext4 10% -4GB\
+		mkpart primary swap -4GB 100% \
 		set 1 boot on
 
 	yes | {
 		mkfs.vfat -F32 -L BOOT /dev/sda1
 		mkfs.ext4 -L ROOT /dev/sda2
 		mkfs.ext4 -L HOME /dev/sda3
+		mkswap -L SWAP /dev/sda4
 	}
 }
 
@@ -46,13 +48,15 @@ partitioning_bios() {
 	parted -s --align optimal -- /dev/sda \
 		mkpart primary ext4 0% 200MiB \
 		mkpart primary ext4 200MiB 10% \
-		mkpart primary ext4 10% 100% \
+		mkpart primary ext4 10% -4G \
+		mkpart primary swap -4G 100% \
 		set 1 boot on
 
 	yes | {
 		mkfs.ext4 -L BOOT /dev/sda1
 		mkfs.ext4 -L ROOT /dev/sda2
 		mkfs.ext4 -L HOME /dev/sda3
+		mkswap -L SWAP /dev/sda4
 	}
 }
 
@@ -64,6 +68,7 @@ mount_partitions() {
 	mount -L BOOT ${chroot}/boot
 	mkdir -p ${chroot}/home
 	mount -L HOME ${chroot}/home
+	swapon -L SWAP
 }
 
 # BOOTSTRAP
