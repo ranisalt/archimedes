@@ -13,7 +13,7 @@ packages="${packages} openssh wicd"
 packages="${packages} slim xorg-{server,setxkbmap,xinit,xrdb}"
 
 # DE stuff
-packages="${packages} conky dmenu i3-wm i3lock i3status ranger wicd-curses"
+packages="${packages} conky dmenu i3-wm i3lock i3status ranger"
 
 # Useful things
 packages="${packages} firefox fish git vim"
