@@ -25,35 +25,23 @@ then
 	exit 69
 fi
 
+uefi=$([ -d /sys/firmware/efi ])
+$uefi && bootfs="vfat" || bootfs="ext4"
+
+alias mkfs.vfat="mkfs.vfat -F32"
+
 # PARTITIONING AND LABELING
-partitioning_uefi() {
+partitioning() {
 	parted -s -- /dev/sda mklabel gpt
 	parted -s --align optimal -- /dev/sda \
-		mkpart ESP fat32 0% 200MiB \
+		mkpart primary ${bootfs} 0% 200MiB \
 		mkpart primary ext4 200MiB 10% \
 		mkpart primary ext4 10% -4GB\
 		mkpart primary swap -4GB 100% \
 		set 1 boot on
 
 	yes | {
-		mkfs.vfat -F32 -L BOOT /dev/sda1
-		mkfs.ext4 -L ROOT /dev/sda2
-		mkfs.ext4 -L HOME /dev/sda3
-		mkswap -L SWAP /dev/sda4
-	}
-}
-
-partitioning_bios() {
-	parted -s -- /dev/sda mklabel gpt
-	parted -s --align optimal -- /dev/sda \
-		mkpart primary ext4 0% 200MiB \
-		mkpart primary ext4 200MiB 10% \
-		mkpart primary ext4 10% -4G \
-		mkpart primary swap -4G 100% \
-		set 1 boot on
-
-	yes | {
-		mkfs.ext4 -L BOOT /dev/sda1
+		mkfs.${bootfs} -L BOOT /dev/sda1
 		mkfs.ext4 -L ROOT /dev/sda2
 		mkfs.ext4 -L HOME /dev/sda3
 		mkswap -L SWAP /dev/sda4
@@ -92,7 +80,7 @@ configure() {
 	cat <<-EOF > ${chroot}/etc/fstab
 		# LOCAL MOUNTS
 		# Disable automount on /boot increases security, and letting systemd handle makes it more comfortable :)
-		PARTUUID="${boot}" /boot ext4 noatime,noauto,nodev,noexec,nosuid,x-systemd.automount 0 2
+		PARTUUID="${boot}" /boot ${bootfs} noatime,noauto,nodev,noexec,nosuid,x-systemd.automount 0 2
 	EOF
 
 	echo -n "What is the desired machine hostname?"
@@ -161,9 +149,7 @@ install_bootloader_bios() {
 	sed -i 's/sda3/sda2/' ${chroot}/boot/syslinux/syslinux.cfg
 }
 
-uefi=$([ -d /sys/firmware/efi ])
-
-$uefi && partitioning_uefi || partitioning_bios
+partitioning
 mount_partitions
 bootstrap
 configure
