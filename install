@@ -82,6 +82,8 @@ configure() {
 		# LOCAL MOUNTS
 		# Disable automount on /boot increases security, and letting systemd handle makes it more comfortable :)
 		PARTUUID="${boot}" /boot ${bootfs} noatime,noauto,nodev,noexec,nosuid,x-systemd.automount 0 2
+		# If on SSD, add commit=60
+		PARTUUID="${home}" /home ext4 noatime,noauto,x-systemd.automount 0 0
 		PARTUUID="${swap}" swap swap defaults 0 0
 	EOF
 
