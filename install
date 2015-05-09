@@ -26,9 +26,9 @@ then
 fi
 
 uefi=$([ -d /sys/firmware/efi ])
-$uefi && bootfs="vfat" || bootfs="ext4"
+$uefi && bootfs="fat32" || bootfs="ext4"
 
-alias mkfs.vfat="mkfs.vfat -F32"
+alias mkfs.fat32="mkfs.vfat -F32"
 
 # PARTITIONING AND LABELING
 partitioning() {
@@ -77,6 +77,7 @@ configure() {
 	home=$(lsblk -no PARTUUID `blkid -L HOME`)
 	swap=$(lsblk -no PARTUUID `blkid -L SWAP`)
 
+	[ "x${bootfs}" == "xfat32" ] && bootfs="vfat"
 	# I do not use genfstab because I need a more fine grained approach
 	cat <<-EOF > ${chroot}/etc/fstab
 		# LOCAL MOUNTS
