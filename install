@@ -37,7 +37,7 @@ partitioning() {
 		mkpart primary ${bootfs} 0% 200MiB \
 		mkpart primary ext4 200MiB 10% \
 		mkpart primary ext4 10% -4GB\
-		mkpart primary swap -4GB 100% \
+		mkpart primary linux-swap -4GB 100% \
 		set 1 boot on
 
 	yes | {
