@@ -4,13 +4,13 @@ chroot="/mnt"
 
 ### PACKAGE SELECTION ###
 # Bootloader. Please change the bootloader function if you change it.
-packages="${packages} syslinux"
+packages="${packages} base-devel syslinux"
 
 # Some daemons, clients and related packages
 packages="${packages} openssh wicd"
 
 # X.Org and related packages
-packages="${packages} slim xorg-{server,setxkbmap,xinit}"
+packages="${packages} slim xorg-{server,setxkbmap,xinit,xrdb}"
 
 # DE stuff
 packages="${packages} conky dmenu i3-wm i3lock i3status ranger wicd-curses"
