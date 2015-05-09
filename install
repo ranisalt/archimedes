@@ -87,6 +87,16 @@ configure() {
 		PARTUUID="${swap}" swap swap defaults 0 0
 	EOF
 
+	cat <<-EOF > ${chroot}/etc/X11/xorg.conf.d/20-keyboard.conf
+		Section "InputClass"
+			Identifier "system-keyboard"
+			MatchIsKeyboard "on"
+			Option "XkbModel" "pc105"
+			Option "XkbLayout" "br"
+			Option "XkbVariant" "abnt2"
+		EndSection
+	EOF
+
 	echo -n "What is the desired machine hostname?"
 	read -er hostname
 	echo ${hostname} > ${chroot}/etc/hostname
