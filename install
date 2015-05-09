@@ -75,12 +75,14 @@ configure() {
 	root=$(lsblk -no PARTUUID `blkid -L ROOT`)
 	boot=$(lsblk -no PARTUUID `blkid -L BOOT`)
 	home=$(lsblk -no PARTUUID `blkid -L HOME`)
+	swap=$(lsblk -no PARTUUID `blkid -L SWAP`)
 
 	# I do not use genfstab because I need a more fine grained approach
 	cat <<-EOF > ${chroot}/etc/fstab
 		# LOCAL MOUNTS
 		# Disable automount on /boot increases security, and letting systemd handle makes it more comfortable :)
 		PARTUUID="${boot}" /boot ${bootfs} noatime,noauto,nodev,noexec,nosuid,x-systemd.automount 0 2
+		PARTUUID="${swap}" swap swap defaults 0 0
 	EOF
 
 	echo -n "What is the desired machine hostname?"
