@@ -1,172 +1,208 @@
 #!/usr/bin/bash -x
 
-chroot="/mnt"
+chroot='/mnt'
 
 ### PACKAGE SELECTION ###
-# Bootloader. Please change the bootloader function if you change it.
-packages="${packages} base-devel syslinux"
+packages=(
+	# base + base-devel
+	file
+	gettext
+	licenses
+	linux
+	logrotate
+	man-db
+	pacman
+	procps-ng
+	sed
+	sysfsutils
+	systemd-sysvcompat
+	tar
+	which
+	base-devel
 
-# Some daemons, clients and related packages
-packages="${packages} openssh wicd"
-
-# X.Org and related packages
-packages="${packages} slim xorg-{server,setxkbmap,xinit,xrdb}"
-
-# DE stuff
-packages="${packages} conky dmenu i3-wm i3lock i3status ranger"
-
-# Useful things
-packages="${packages} firefox fish git vim"
+	# extra + community
+	adobe-source-{sans,serif}-pro-fonts
+	arc-{gtk,icon}-theme
+	bluez{,-plugins,-utils}
+	docker
+	efibootmgr
+	f2fs-tools
+	firefox-developer-edition
+	firejail
+	fish
+	git
+	grim slurp
+	htop
+	intel-ucode
+	kitty
+	linux-zen
+	mtr
+	neovim
+	openssh
+	otf-fira-code
+	ranger
+	rng-tools
+	sddm
+	stow
+	sway swaybg waybar
+	systemd-swap
+	telegram-desktop
+	tlp
+	tree
+	udevil
+	{glew,glfw,qt5}-wayland
+)
 
 # CHECK MIRROR CONNECTION
-if ! ping -c 1 150.162.66.161 &>/dev/null
-then
-	echo "Could not connect to 150.162.66.161, please check cables or change IP"
+ping -c 1 archlinux.org &>/dev/null || {
+	echo "Could not connect to archlinux.org, please check cables"
 	exit 69
-fi
-
-uefi=$([ -d /sys/firmware/efi ])
-$uefi && bootfs="fat32" || bootfs="ext4"
-
-alias mkfs.fat32="mkfs.vfat -F32"
+}
 
 # PARTITIONING AND LABELING
 partitioning() {
 	parted -s -- /dev/sda mklabel gpt
 	parted -s --align optimal -- /dev/sda \
-		mkpart primary ${bootfs} 0% 200MiB \
-		mkpart primary ext4 200MiB 10% \
-		mkpart primary ext4 10% -4GB\
-		mkpart primary linux-swap -4GB 100% \
+		mkpart primary fat32 0% 200MiB \
+		mkpart primary f2fs 200MiB 20% \
+		mkpart primary f2fs 20% 100%\
 		set 1 boot on
 
 	yes | {
-		mkfs.${bootfs} -L BOOT /dev/sda1
-		mkfs.ext4 -L ROOT /dev/sda2
-		mkfs.ext4 -L HOME /dev/sda3
-		mkswap -L SWAP /dev/sda4
+		mkfs.vfat -F32 -L BOOT /dev/sda1
+		mkfs.f2fs -L ROOT /dev/sda2
+		mkfs.f2fs -L HOME /dev/sda3
 	}
-}
 
-# MOUNT PARTITIONS
-# Labels are useful
-mount_partitions() {
-	mount -L ROOT ${chroot}
-	mkdir -p ${chroot}/boot
-	mount -L BOOT ${chroot}/boot
-	mkdir -p ${chroot}/home
-	mount -L HOME ${chroot}/home
-	swapon -L SWAP
+	# MOUNT PARTITIONS
+	# Labels are useful
+	mount -L ROOT "$chroot"
+	mkdir -pv "$chroot/boot" "$chroot/home"
+	mount -L BOOT "$chroot/boot"
+	mount -L HOME "$chroot/home"
 }
 
 # BOOTSTRAP
 # Configure mirrorlist and run pacstrap
-# This is a personal choice mirror. It's 500 meters from home and I get <5ms ping.
 bootstrap() {
-	cat <<-EOF > /etc/pacman.d/mirrorlist
-		Server = http://pet.inf.ufsc.br/mirrors/archlinux/\$repo/os/\$arch
-	EOF
-	pacstrap ${chroot} base $(eval echo -e ${packages})
-}
-
-# CONFIGURE FILES
-configure() {
-	# -no means --noheadings and --output, but it's funny like that
-	root=$(lsblk -no PARTUUID `blkid -L ROOT`)
-	boot=$(lsblk -no PARTUUID `blkid -L BOOT`)
-	home=$(lsblk -no PARTUUID `blkid -L HOME`)
-	swap=$(lsblk -no PARTUUID `blkid -L SWAP`)
-
-	[ "x${bootfs}" == "xfat32" ] && bootfs="vfat"
-	# I do not use genfstab because I need a more fine grained approach
-	cat <<-EOF > ${chroot}/etc/fstab
-		# LOCAL MOUNTS
-		# Disable automount on /boot increases security, and letting systemd handle makes it more comfortable :)
-		PARTUUID="${boot}" /boot ${bootfs} noatime,noauto,nodev,noexec,nosuid,x-systemd.automount 0 2
-		# If on SSD, add commit=60
-		PARTUUID="${home}" /home ext4 noatime,noauto,x-systemd.automount 0 0
-		PARTUUID="${swap}" swap swap defaults 0 0
-	EOF
-
-	cat <<-EOF > ${chroot}/etc/X11/xorg.conf.d/20-keyboard.conf
-		Section "InputClass"
-			Identifier "system-keyboard"
-			MatchIsKeyboard "on"
-			Option "XkbModel" "pc105"
-			Option "XkbLayout" "br"
-			Option "XkbVariant" "abnt2"
-		EndSection
-	EOF
-
-	echo -n "What is the desired machine hostname?"
-	read -er hostname
-	echo ${hostname} > ${chroot}/etc/hostname
-
-	sed -i 's/#\(en_US.UTF-8\)/\1/' ${chroot}/etc/locale.gen
-	echo LANG=en_US.UTF-8 > ${chroot}/etc/locale.conf
-
-	cat <<-EOF > ${chroot}/etc/systemd/timesyncd.conf
-		[Time]
-		NTP=ntp.ufsc.br
-		FallbackNTP=0.arch.pool.ntp.org 1.arch.pool.ntp.org 2.arch.pool.ntp.org 3.arch.pool.ntp.org
-	EOF
-
-	# Configure mkinitcpio to use LZ4. It's faster.
-	sed -i 's/^\(COMPRESSION\)/#\1/g' ${chroot}/etc/mkinitcpio.conf
-	sed -i 's/^#\(COMPRESSION="lz4"\)/\1/' ${chroot}/etc/mkinitcpio.conf
-
-	# Let wheel users become use sudo
-	sed -i 's/^#.*?\(%wheel ALL=(ALL) ALL\)/\1/' ${chroot}/etc/sudoers
+	MIRRORLIST='https://www.archlinux.org/mirrorlist/all/http/'
+	curl -sSL "$MIRRORLIST" | sed -e 's/^#S/S/' | rankmirrors -n 5 --max-time 1.0 --verbose - > /etc/pacman.d/mirrorlist
+	eval pacstrap "$chroot" "${packages[*]}"
 }
 
 # CONFIGURE ON CHROOT
 # Does some things other than write to files
 configure_chroot() {
-	# Generate locales
-	arch-chroot ${chroot} locale-gen
+	# I do not use genfstab because I need a more fine grained approach
+	cat <<-EOF > "$chroot/etc/fstab"
+		# LOCAL MOUNTS
+		# Disable automount on /boot increases security, and letting systemd handle makes it more comfortable :)
+		PARTUUID="$(lsblk -no PARTUUID /dev/sda1)" /boot vfat noauto,lazytime,nodev,noexec,nosuid,x-systemd.automount,umask=0077 0 2
+		PARTUUID="$(lsblk -no PARTUUID /dev/sda3)" /home f2fs noauto,lazytime,nodev,nosuid,commit=60,x-systemd.automount 0 0
+	EOF
 
-	# Symlink timezone
-	arch-chroot ${chroot} ln -sf /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
+	# Configure mkinitcpio to skip compression. It's faster.
+	sed -i 's/^\(COMPRESSION\)/#\1/g' "$chroot/etc/mkinitcpio.conf"
+	echo 'COMPRESSION="cat"' >> "$chroot/etc/mkinitcpio.conf"
+
+	# Generate locales
+	sed -i 's/#\(en_US.UTF-8\)/\1/' "$chroot/etc/locale.gen"
+	echo 'LANG=en_US.UTF-8' > "$chroot/etc/locale.conf"
+	arch-chroot "$chroot" locale-gen
 
 	# Read and store common user and password
-	echo -n "What is the desired username?"
+	echo -n 'What is the desired username?'
 	read -er username
-	arch-chroot ${chroot} useradd -m -G audio,users,video,wheel ${username}
-	echo -n "What is the desired ${username} password?"
+	arch-chroot "$chroot" useradd -m -G audio,users,video,wheel "$username"
+
+	echo -n "What is the desired $username password?"
 	read -ers password
 
 	# Read and store root password
-	echo -n "What is the desired root password?" 
+	echo -n 'What is the desired root password?'
 	read -ers rootpw
-	arch-chroot ${chroot} chpasswd <<-EOF
+	arch-chroot "$chroot" chpasswd <<-EOF
 		root:$rootpw
 		$username:$password
 	EOF
 	unset rootpw
 
-	arch-chroot ${chroot} systemctl enable slim.service wicd.service
+	# Let wheel users use sudo
+	sed -i 's/^#.*?\(%wheel ALL=(ALL) ALL\)/\1/' "$chroot/etc/sudoers"
+}
+
+configure_systemd() {
+	echo -n 'What is the desired machine hostname?'
+	read -er hostname
+	arch-chroot "$chroot" hostnamectl set-hostname "$hostname"
+
+	mkdir -pv $chroot/etc/systemd/{network,{resolved,swap}.conf.d}
+
+	# systemd-networkd
+	cat <<-EOF > "$chroot/etc/systemd/network/wired.network"
+		[Match]
+		Name=enp*
+
+		[Network]
+		DHCP=yes
+		IPForward=kernel
+		IPv6PrivacyExtensions=kernel
+
+		[DHCP]
+		RouteMetric=10
+	EOF
+	cat <<-EOF > "$chroot/etc/systemd/network/wireless.network"
+		[Match]
+		Name=wlp*
+
+		[Network]
+		DHCP=yes
+		IPForward=kernel
+		IPv6PrivacyExtensions=kernel
+
+		[DHCP]
+		RouteMetric=20
+	EOF
+
+	# systemd-resolved
+	cat <<-EOF > "$chroot/etc/systemd/resolved.conf.d/resolved.conf"
+		[Resolve]
+		FallbackDNS=1.1.1.1 1.0.0.1 2606:4700:4700::1111 2606:4700:4700::1001
+	EOF
+
+	# systemd-swap
+	cat <<-EOF > "$chroot/etc/systemd/swap.conf.d/swap.conf"
+		swapd_auto_swapon=0
+		zram_alg=lzo-rle
+		zram_enabled=1
+		zswap_enabled=0
+	EOF
+
+	arch-chroot "$chroot" localectl set-keymap 'br-abnt2'
+	arch-chroot "$chroot" localectl set-x11-keymap 'br' 'abnt2' '' 'ctrl:swapcaps'
+	arch-chroot "$chroot" timedatectl set-timezone 'America/Sao_Paulo'
+	arch-chroot "$chroot" systemctl enable {rngd,sddm,systemd-{networkd,resolved,swap,timesyncd}}.service {docker,sshd}.socket
 }
 
 # INSTALL BOOTLOADER
-install_bootloader_uefi() {
-	mkdir -p ${chroot}/boot/EFI/syslinux
-	arch-chroot ${chroot} cp -r /usr/lib/syslinux/efi64/* /boot/EFI/syslinux
-	efibootmgr -c -d /dev/sda -p 1 /l /EFI/syslinux/syslinux.efi -L "Syslinux"
+install_bootloader() {
+	ROOTFS="root=PARTUUID=$(lsblk -no PARTUUID /dev/sda2) rootfstype=f2fs rootflags=fastboot,lazytime rw"
+	INITRD='initrd=/intel-ucode.img initrd=/initramfs-linux-zen.img'
+	ESSENTIAL="$ROOTFS $INITRD"
 
-	# Fix retarded hardcoded default
-	sed -i 's/sda3/sda2/' ${chroot}/boot/EFI/syslinux/syslinux.cfg
-}
+	BLOCK='elevator=none scsi_mod.use_blk_mq=1'
+	DISABLE='nmi_watchdog=off numa_balancing=disable'
+	LOGGING='quiet loglevel=3 udev.log_priority=3'
+	EXTRA="$BLOCK $DISABLE $LOGGING"
 
-install_bootloader_bios() {
-	syslinux-install_update -i -a -m -c ${chroot}
-
-	# Fix retarded hardcoded default
-	sed -i 's/sda3/sda2/' ${chroot}/boot/syslinux/syslinux.cfg
+	arch-chroot "$chroot" efibootmgr --disk /dev/sda --part 2 \
+		--create \
+		--label 'Arch Linux' --loader '/vmlinuz-linux-zen' \
+		--unicode "$ESSENTIAL $EXTRA"
 }
 
 partitioning
-mount_partitions
 bootstrap
-configure
 configure_chroot
-$uefi && install_bootloader_uefi || install_bootloader_bios
+configure_systemd
+install_bootloader
